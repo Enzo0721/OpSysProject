@@ -7,19 +7,19 @@
 #include "process.h"
 
 double next_exp(double lambda, double upper_bound) {
-    double u;
+    double exp_val;
     do {
-        u = drand48();
-    } while (u == 0); // To avoid log(0)
-
-    double exp_val = -log(u) / lambda;
-
-    return (exp_val > upper_bound) ? upper_bound : exp_val;
+        double u;
+        do {
+            u = drand48();
+        } while (u == 0); // To avoid log(0)
+        exp_val = -log(u) / lambda;
+    } while (exp_val > upper_bound);
+    return exp_val;
 }
 
 std::vector<Process>  generateProcess(int n, int ncpu, double lambda, double upper_bound) {
     std::vector <Process> processes;
-    std::uniform_real_distribution<> uni_dist(0.0, 1.0); /* not sure ??*/
 
     for (int i = 0; i < n; i++) {
         Process p;
@@ -28,8 +28,7 @@ std::vector<Process>  generateProcess(int n, int ncpu, double lambda, double upp
         p.arrival_time = std::floor(next_exp(lambda, upper_bound));
         std::cout << "PROCESS ID: " << p.pid << std::endl;
         std::cout << "PROCESS ARRIVAL: " << p.arrival_time << std::endl;
-
-        int burstNum = std::ceil(next_exp(lambda, upper_bound));
+        int burstNum = std::ceil(drand48() * 32);
         std::cout << "PROCESS BURST AMOUNT: " << burstNum << std::endl;
         processes.push_back(p);
     } 
