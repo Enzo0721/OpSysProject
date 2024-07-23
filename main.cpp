@@ -18,6 +18,11 @@ double next_exp(double lambda, double upper_bound) {
     return exp_val;
 }
 
+//params that are ints here might be used to track total CPU burst time
+void generateBursts(Process currentProcess, int & CPU_total, int & IO_Total){
+    return;
+}
+
 std::vector<Process>  generateProcess(int n, int ncpu, double lambda, double upper_bound) {
     std::vector <Process> processes;
 
@@ -26,10 +31,11 @@ std::vector<Process>  generateProcess(int n, int ncpu, double lambda, double upp
         p.pid = std::string(1, 'A' + i / 10) + std::to_string(i % 10);
         p.cpuBound = i < ncpu;
         p.arrival_time = std::floor(next_exp(lambda, upper_bound));
-        std::cout << "PROCESS ID: " << p.pid << std::endl;
-        std::cout << "PROCESS ARRIVAL: " << p.arrival_time << std::endl;
+        //std::cout << "PROCESS ID: " << p.pid << std::endl;
+        //std::cout << "PROCESS ARRIVAL: " << p.arrival_time << std::endl;
         int burstNum = std::ceil(drand48() * 32);
-        std::cout << "PROCESS BURST AMOUNT: " << burstNum << std::endl;
+        //std::cout << "PROCESS BURST AMOUNT: " << burstNum << std::endl;
+        std::cout << "I/O-bound process " << p.pid <<": arrival time "<< p.arrival_time <<"; "<< burstNum <<" CPU bursts:" << std::endl;
         processes.push_back(p);
     } 
     return processes;
