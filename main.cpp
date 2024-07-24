@@ -56,6 +56,10 @@ std::vector<Process> generateProcesses(int n, int ncpu, double lambda, double up
     return processes;
 }
 
+void set_nan_zero(double & val){
+    val = std::isnan(val) ? 0.0 : val;
+}
+
 void generateStatistics(const std::vector<Process>& processes, int n, int nCpu) {
     std::ofstream outFile("simout.txt");
     outFile << std::fixed << std::setprecision(3);
@@ -76,12 +80,17 @@ void generateStatistics(const std::vector<Process>& processes, int n, int nCpu) 
             ioBoundIoCount += p.io_bursts.size();
         }
     }
-
+    
     double cpuBoundAvgCpu = std::ceil(cpuBoundCpuTotal / cpuBoundCpuCount * 1000) / 1000;
+    set_nan_zero(cpuBoundAvgCpu);
     double ioBoundAvgCpu = std::ceil(ioBoundCpuTotal / ioBoundCpuCount * 1000) / 1000;
+    set_nan_zero(ioBoundAvgCpu);
     double overallAvgCpu = std::ceil((cpuBoundCpuTotal + ioBoundCpuTotal) / (cpuBoundCpuCount + ioBoundCpuCount) * 1000) / 1000;
+
     double cpuBoundAvgIo = std::ceil(cpuBoundIoTotal / cpuBoundIoCount * 1000) / 1000;
+    set_nan_zero(cpuBoundAvgIo);
     double ioBoundAvgIo = std::ceil(ioBoundIoTotal / ioBoundIoCount * 1000) / 1000;
+    set_nan_zero(ioBoundAvgIo);
     double overallAvgIo = std::ceil((cpuBoundIoTotal + ioBoundIoTotal) / (cpuBoundIoCount + ioBoundIoCount) * 1000) / 1000;
 
     outFile << "-- number of processes: " << n << std::endl;
@@ -107,7 +116,7 @@ int main(int argc, char** argv) {
     int seed = std::stoi(argv[3]); /* seed for pseudo-random number sequence */
     double lambda = std::stod(argv[4]); /* lambda*/
     double upper_bound = std::stod(argv[5]); /* random value upper bound */
-    if (n <= 0 || ncpu < 0 || ncpu > n || lambda <= 0 || upper_bound <= 0) {
+    if (n <= 0 || n > 260 || ncpu < 0 || ncpu > n || lambda <= 0 || upper_bound <= 0) {
         std::cerr << "ERROR: Invalid input parameters\n" << std::endl;
         return 1;
     }
