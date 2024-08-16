@@ -113,48 +113,103 @@ bool compare_by_arrival_time(const Process & left, const Process & right){
     return left.arrival_time < right.arrival_time;
 }
 
-void remove_latest(std::list<Process> & start, std::list<Process> & end){
+void remove_latest(std::vector<Process> & start, std::vector<Process> & end){
     std::cout << "hello world" << std::endl;
 }
 
-void move_process(int tcs, std::list<Process> start, std::list<Process> destination){
-    int moving_time = (int) tcs/2;
-    Process temp = start.front();
-    start.pop_front();
+void move_process(int tcs, std::vector<Process> & start, std::vector<Process> & destination, int new_arrival){
+    if (!start.empty()) {
+        int moving_time = tcs / 2;
+        Process temp = start.front();
+        start.erase(start.begin());
 
-    temp.arrival_time += moving_time;
-    
-    destination.push_back(temp);
-    std::sort(destination.begin(), destination.end(), compare_by_arrival_time);
+        temp.arrival_time += (moving_time + new_arrival);
+
+        auto it = std::lower_bound(destination.begin(), destination.end(), temp, compare_by_arrival_time);
+        destination.insert(it, temp);
+    } else {
+        std::cerr << "Error: Attempted to move a process from an empty vector.\n";
+    }
 }
 
-void run_FCFS(std::vector<Process> & Processes){
+std::string queue_string(const std::vector<Process> & queue){
+    std::string full_string = "[Q";
+    if(queue.size() > 0){
+        for(int i = 0; i < queue.size(); ++i){
+            full_string += " ";
+            full_string += queue[i].pid;
+        }
+    }
+    else{
+        full_string += " empty";
+    }
+
+    full_string += "]";
+    
+    return full_string;
+}
+
+void run_FCFS(std::vector<Process> & Processes, int tcs){
     int tick = 0;
-    std::list<Process> unarrived_processes;
+    std::vector<Process> unarrived_processes;
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
-    std::sort(Processes.begin(), Processes.end(), compare_by_arrival_time);
+    std::sort(unarrived_processes.begin(), unarrived_processes.end(), compare_by_arrival_time);
 
     int num_processes = Processes.size();
 
-    std::list<Process> queue;
-    std::list<Process> blocking_on_io;
-    std::list<Process> moving_to_completed;
-    std::list<Process> completed;
+    std::vector<Process> queue;
+    std::vector<Process> blocking_on_io;
+    std::vector<Process> running_CPU_burst;
+    std::vector<Process> moving_to_completed;
+    std::vector<Process> completed;
     // for(const auto & p : unarrived_processes){
     //     std::cout << p.pid << " " << p.arrival_time << std::endl;
     // }
     // std::cout << (*unarrived_processes.begin()).cpu_bursts.size() << std::endl;
-    std::cout << *((*unarrived_processes.begin()).cpu_bursts.begin()) << std::endl;
-    std::cout << *((*unarrived_processes.begin()).io_bursts.begin()) << std::endl;
-
+    // std::cout << *((*unarrived_processes.begin()).cpu_bursts.begin()) << std::endl;
+    // std::cout << *((*unarrived_processes.begin()).io_bursts.begin()) << std::endl;
+    std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
     while(tick < 10000){
+        //To-do prevent processes from doing things while a context switch is occuring
+
         /*checks:
         -Check for newly arrived processes
         -Check for processes blocked on io
         -Check in queue for next process to begin CPU burst
         -Check for processes that need to be moved from moving_to_completed to completed
         */
-    
+       //Process & working_process;
+       std::string working_pid;
+
+       //checking for newly arrived processes
+       if(unarrived_processes.size() > 0){
+            while(unarrived_processes.size() > 0 && unarrived_processes.front().arrival_time == tick){
+                //working_process = *unarrived_processes.begin();
+                working_pid = unarrived_processes.front().pid;
+                move_process(tcs, unarrived_processes, queue, 0);
+                std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
+                
+            }
+        }
+
+        //beginning CPU burst
+        if(queue.size() > 0){
+            while(queue.size() > 0 && (*queue.begin()).arrival_time == tick){
+                while(queue.size() > 0 && (*queue.begin()).arrival_time == tick){
+                    if(queue.front().cpu_bursts.size() != 0){
+                        working_pid = queue.front().pid;
+                        int time_spent = queue.front().cpu_bursts.front();
+
+                        move_process(tcs, queue, running_CPU_burst, tick + queue.front().cpu_bursts.front());
+                        std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " << time_spent << " burst "  << queue_string(queue) << std::endl;
+                        //working_process.cpu_bursts.erase(working_process.cpu_bursts.begin());
+                    }
+                }
+            }
+        }
+            
+
+        tick++;
     }
 }
 
@@ -186,6 +241,6 @@ int main(int argc, char** argv) {
 
     std::cout << "<<< PROJECT PART II"<< std::endl;
     std::cout << "<<< -- t_cs="<< tcs << "ms; alpha="<< std::fixed << std::setprecision(2) << alpha << "; t_slice=" << tslice <<"ms" << std::endl;
-    run_FCFS(Processes);
+    run_FCFS(Processes, tcs);
     return 0;
 }
