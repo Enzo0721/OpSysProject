@@ -8,10 +8,14 @@
 #include <numeric>
 #include <list>
 #include <algorithm>
+#include <map>
+#include <iomanip>
 
 struct Process {
     std::string pid;
     int arrival_time;
+    int tau;
+    int prev_CPU_burst = -1;
     bool cpuBound;
     std::vector<int> cpu_bursts;
     std::vector<int> io_bursts;
@@ -36,6 +40,7 @@ std::vector<Process> generateProcesses(int n, int ncpu, double lambda, double up
         p.cpuBound = i < ncpu;
         p.arrival_time = std::floor(next_exp(lambda, upper_bound));
         p.pid = std::string(1, 'A' + (i / 10)) + std::to_string(i % 10);
+        p.tau = (int)1/lambda;
         int burstNum = std::ceil(drand48() * 32);
         std::cout << (p.cpuBound ? "CPU-bound" : "I/O-bound") << " process " << p.pid 
                 << ": arrival time " << p.arrival_time << "ms; " << burstNum << " CPU " << (burstNum == 1 ? "burst" : "bursts") << ":" << std::endl;
@@ -108,8 +113,17 @@ void generateStatistics(const std::vector<Process>& processes, int n, int nCpu) 
     outFile.close();
 }
 
-bool compare_by_arrival_time(const Process & left, const Process & right){
+bool compare_by_arrival_time(const Process & left, const Process & right){ /* used in fcfs */
     return left.arrival_time < right.arrival_time;
+}
+
+bool compare_by_burst_time(const Process &left, const Process &right) { /* used in sjf */
+    return left.tau < right.tau;
+}
+
+//calculate the next tau based on the previous burst time and the current tau
+int calculate_tau(int previous_tau, int burst_time, float alpha) {
+    return static_cast<int>(alpha * burst_time + (1 - alpha) * previous_tau);
 }
 
 void remove_latest(std::vector<Process> & start, std::vector<Process> & end){
@@ -280,7 +294,97 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
     std::cout << "time " << tick << "ms: Simulator ended for FCFS" << std::endl;
 }
 
+void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
+    int tick = 0;
+    std::vector<Process> unarrived_processes;
+    std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
+    std::sort(unarrived_processes.begin(), unarrived_processes.end(), compare_by_arrival_time);
 
+    std::vector<Process> queue;
+    std::vector<Process> blocking_on_io;
+    std::vector<Process> running_CPU_burst;
+    std::vector<Process> completed;
+
+    int remaining_CS_t = 0;
+    const int HALF_TCS = tcs / 2;
+
+    std::cout << "time 0ms: Simulator started for SJF [Q empty]" << std::endl;
+    
+    while (!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()) {
+        std::string working_pid;
+        if (!unarrived_processes.empty()) {
+            while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
+                working_pid = unarrived_processes.front().pid;
+                move_process(tick + HALF_TCS, unarrived_processes, queue);
+                std::sort(queue.begin(), queue.end(), compare_by_burst_time);
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << unarrived_processes.front().tau << "ms) arrived; added to ready queue " << queue_string(queue) << std::endl;
+            }
+        }
+        if (remaining_CS_t > 0) {
+            remaining_CS_t--;
+        }
+
+        // Move process from queue to CPU if no process is currently running
+        if (remaining_CS_t == 0 && running_CPU_burst.empty() && !queue.empty()) {
+            if (queue.front().arrival_time <= tick) {
+                working_pid = queue.front().pid;
+                int time_spent = queue.front().cpu_bursts.front();
+                remaining_CS_t = tcs;  // Context switch
+
+                move_process(tick + time_spent, queue, running_CPU_burst);
+
+                // CPU burst message
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << queue.front().tau << "ms) started using the CPU for " << time_spent << "ms burst " << queue_string(queue) << std::endl;
+                
+                queue.front().prev_CPU_burst = queue[0].cpu_bursts[0];
+                remove_first_cpu_burst(running_CPU_burst);
+            }
+        }
+
+        //moving process out of CPU and into burst or blocking on io
+        if (!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick) {
+            int old_tau = running_CPU_burst[0].tau;
+            running_CPU_burst[0].tau = calculate_tau(old_tau, running_CPU_burst[0].prev_CPU_burst, alpha);
+            if(running_CPU_burst[0].prev_CPU_burst == -1){
+                std::cerr << "attempted to recalculate tau on a process that has not been in the CPU yet" <<std::endl;
+            }
+
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " (tau " << old_tau << "ms) completed a CPU burst; " << running_CPU_burst[0].cpu_bursts.size() - 1 << " bursts to go " << queue_string(queue) << std::endl;
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Recalculated tau for process " << running_CPU_burst[0].pid << ": old tau " << old_tau << "ms ==> new tau " << running_CPU_burst[0].tau << "ms " << queue_string(queue) << std::endl;
+            if (running_CPU_burst[0].cpu_bursts.empty()) {
+                std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
+                move_process(tick + HALF_TCS, running_CPU_burst, completed);
+            } else {
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) << std::endl;
+                remaining_CS_t = tcs;
+                move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
+            }
+        }
+
+        //completion of io bursts
+        if (!blocking_on_io.empty() && blocking_on_io[0].arrival_time <= tick) {
+            remove_first_io_burst(blocking_on_io);
+            working_pid = blocking_on_io[0].pid;
+            move_process(tick + HALF_TCS, blocking_on_io, queue);
+            std::sort(queue.begin(), queue.end(), compare_by_burst_time); //again
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << blocking_on_io[0].tau << "ms) completed I/O; added to ready queue " << queue_string(queue) << std::endl;
+
+            remaining_CS_t = HALF_TCS;
+        }
+
+        tick++;
+    }
+    std::cout << "time " << tick << "ms: Simulator ended for SJF" << std::endl;
+}
+
+void run_SRT();
+void run_RR();
 
 int main(int argc, char** argv) {
     if (argc != 9) {
@@ -311,5 +415,7 @@ int main(int argc, char** argv) {
     std::cout << "<<< PROJECT PART II"<< std::endl;
     std::cout << "<<< -- t_cs="<< tcs << "ms; alpha="<< std::fixed << std::setprecision(2) << alpha << "; t_slice=" << tslice <<"ms" << std::endl;
     run_FCFS(Processes, tcs);
+    std:: cout << std::endl;
+    run_SJF(Processes, tcs, alpha);
     return 0;
 }
