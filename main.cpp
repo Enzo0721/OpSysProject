@@ -123,7 +123,7 @@ bool compare_by_burst_time(const Process &left, const Process &right) { /* used 
 
 //calculate the next tau based on the previous burst time and the current tau
 int calculate_tau(int previous_tau, int burst_time, float alpha) {
-    return static_cast<int>(alpha * burst_time + (1 - alpha) * previous_tau);
+    return std::ceil(alpha * burst_time + (1 - alpha) * previous_tau);
 }
 
 void remove_latest(std::vector<Process> & start, std::vector<Process> & end){
@@ -334,11 +334,13 @@ void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
 
                 move_process(tick + time_spent, queue, running_CPU_burst);
 
+                running_CPU_burst.front().prev_CPU_burst = time_spent;
+
+                remaining_CS_t = HALF_TCS;
+
                 // CPU burst message
                 if (tick < 10000)
                     std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << queue.front().tau << "ms) started using the CPU for " << time_spent << "ms burst " << queue_string(queue) << std::endl;
-                
-                queue.front().prev_CPU_burst = queue[0].cpu_bursts[0];
                 remove_first_cpu_burst(running_CPU_burst);
             }
         }
