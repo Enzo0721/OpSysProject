@@ -164,6 +164,21 @@ void remove_first_cpu_burst(std::vector<Process>& running_CPU_burst) {
     }
 }
 
+void remove_first_io_burst(std::vector<Process>& blocking_on_io) {
+    // Ensure that blocking_on_io is not empty before trying to access its front
+    if (!blocking_on_io.empty()) {
+        // Ensure that the process at the front has at least one I/O burst to remove
+        if (!blocking_on_io.front().io_bursts.empty()) {
+            // Erase the first I/O burst
+            blocking_on_io.front().io_bursts.erase(blocking_on_io.front().io_bursts.begin());
+        } else {
+            std::cerr << "Error: No I/O bursts to remove for the process." << std::endl;
+        }
+    } else {
+        std::cerr << "Error: No process is currently blocking on I/O." << std::endl;
+    }
+}
+
 void run_FCFS(std::vector<Process> & Processes, int tcs){
     int tick = 0;
     std::vector<Process> unarrived_processes;
@@ -176,12 +191,10 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
     std::vector<Process> blocking_on_io;
     std::vector<Process> running_CPU_burst;
 
-    std::vector<Process> completed;
+    std::vector<Process> completed; // To track completed processes
 
     int remaining_CS_t = 0;
     const int HALF_TCS = (int)tcs/2;
-
-    //remaining context switch time, -1 means no context switch is occuring
 
     std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
     while(!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()){
@@ -202,7 +215,6 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
                 working_pid = unarrived_processes.front().pid;
                 move_process(tick + HALF_TCS, unarrived_processes, queue);                //semantically, the updated arrival time means the time it arrives in queue
                 std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
-                
             }
         }
 
@@ -213,7 +225,6 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
         //moving from queue to CPU
         if(remaining_CS_t == 0 && queue.size() > 0 && running_CPU_burst.empty()){
             if(queue.front().cpu_bursts.size() != 0 && queue.front().arrival_time <= tick){
-                //std::cout << "TEST - ARRIVAL TIME:"<< queue.front().arrival_time;
                 working_pid = queue.front().pid; 
                 int time_spent = queue.front().cpu_bursts.front();
                 remaining_CS_t = HALF_TCS;
@@ -231,32 +242,41 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
         if(!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time == tick){
             std::cout <<"time " << tick << "ms: Process " <<running_CPU_burst[0].pid << " completed a CPU burst; " <<running_CPU_burst[0].cpu_bursts.size() <<" bursts to go " << queue_string(queue) <<std::endl;
         }
-        //Move process out of CPU and into i/o
+        //Move process out of CPU and into i/o or to completed list
         if(remaining_CS_t == 0 && !running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick){
-            if(running_CPU_burst[0].io_bursts.empty()){
-
+            if(running_CPU_burst[0].cpu_bursts.empty()){
+                // Process has completed all CPU bursts
+                std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
+                completed.push_back(running_CPU_burst.front());  // Move to completed list
+                running_CPU_burst.clear(); // Clear the running CPU burst
             }
             else{
                 std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
                 <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
                 remaining_CS_t = tcs;
                 move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
+                //remove_first_io_burst(blocking_on_io); // Remove the first I/O burst
             }
                 
         }
         
         //moving process out of io and back into queue
         if(!blocking_on_io.empty() && remaining_CS_t == 0 && blocking_on_io[0].arrival_time <= tick){
-            std::cout <<"time " << tick << "ms: Process " << blocking_on_io[0].pid
+            remove_first_io_burst(blocking_on_io);
+            working_pid = blocking_on_io[0].pid;
+            move_process(tick + HALF_TCS, blocking_on_io, queue);
+            std::cout <<"time " << tick << "ms: Process " << working_pid
             <<" completed I/O" << "; added to ready queue " << queue_string(queue) <<std::endl;
-            move_process(tick + tcs, blocking_on_io, queue);
-            remaining_CS_t = tcs;
+            remaining_CS_t = HALF_TCS;
         }
-
 
         tick++;
     }
+
+    std::cout << "time " << tick << "ms: Simulator ended for FCFS" << std::endl;
 }
+
+
 
 int main(int argc, char** argv) {
     if (argc != 9) {
