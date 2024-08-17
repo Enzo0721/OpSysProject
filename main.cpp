@@ -117,13 +117,13 @@ void remove_latest(std::vector<Process> & start, std::vector<Process> & end){
 }
 
 void move_process(int time_change, std::vector<Process> & start, std::vector<Process> & destination){
-                  //  ^^^^^^^^^^^^ for add 1/2*tcs for context switches
+                  //  ^^^^^^^^^^^^ for add tick + 1/2*tcs for context switches
     if (!start.empty()) {
         //int moving_time = tcs / 2;
         Process temp = start.front();
         start.erase(start.begin());
 
-        temp.arrival_time += time_change;
+        temp.arrival_time = time_change;
 
         auto it = std::lower_bound(destination.begin(), destination.end(), temp, compare_by_arrival_time);
         destination.insert(it, temp);
@@ -178,7 +178,7 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
 
     std::vector<Process> completed;
 
-    int remaining_CS_t = -1;
+    int remaining_CS_t = 0;
     const int HALF_TCS = (int)tcs/2;
 
     //remaining context switch time, -1 means no context switch is occuring
@@ -200,8 +200,7 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
        if(!unarrived_processes.empty()){
             while(!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick){
                 working_pid = unarrived_processes.front().pid;
-                move_process((int)tcs/2, unarrived_processes, queue);
-                //semantically, the updated arrival time means the time it arrives in queue
+                move_process(tick + HALF_TCS, unarrived_processes, queue);                //semantically, the updated arrival time means the time it arrives in queue
                 std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
                 
             }
@@ -212,11 +211,12 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
         }
 
         //moving from queue to CPU
-        if(remaining_CS_t == -1 && queue.size() > 0 && running_CPU_burst.empty()){
-            if(queue.front().cpu_bursts.size() != 0){
+        if(remaining_CS_t == 0 && queue.size() > 0 && running_CPU_burst.empty()){
+            if(queue.front().cpu_bursts.size() != 0 && queue.front().arrival_time <= tick){
+                //std::cout << "TEST - ARRIVAL TIME:"<< queue.front().arrival_time;
                 working_pid = queue.front().pid; 
                 int time_spent = queue.front().cpu_bursts.front();
-                remaining_CS_t = tcs / 2;
+                remaining_CS_t = HALF_TCS;
 
                 //sets arrival time member to time that it completes burst
                 move_process(tick + queue.front().cpu_bursts.front(), queue, running_CPU_burst);
@@ -227,7 +227,32 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
             }
         }
         
-        //moving from CPU to waiting on io
+        //check for if the CPU process is done
+        if(!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time == tick){
+            std::cout <<"time " << tick << "ms: Process " <<running_CPU_burst[0].pid << " completed a CPU burst; " <<running_CPU_burst[0].cpu_bursts.size() <<" bursts to go " << queue_string(queue) <<std::endl;
+        }
+        //Move process out of CPU and into i/o
+        if(remaining_CS_t == 0 && !running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick){
+            if(running_CPU_burst[0].io_bursts.empty()){
+
+            }
+            else{
+                std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
+                <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
+                remaining_CS_t = tcs;
+                move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
+            }
+                
+        }
+        
+        //moving process out of io and back into queue
+        if(!blocking_on_io.empty() && remaining_CS_t == 0 && blocking_on_io[0].arrival_time <= tick){
+            std::cout <<"time " << tick << "ms: Process " << blocking_on_io[0].pid
+            <<" completed I/O" << "; added to ready queue " << queue_string(queue) <<std::endl;
+            move_process(tick + tcs, blocking_on_io, queue);
+            remaining_CS_t = tcs;
+        }
+
 
         tick++;
     }
