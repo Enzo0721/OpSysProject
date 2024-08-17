@@ -198,8 +198,6 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
 
     std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
     while(!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()){
-        //To-do prevent processes from doing things while a context switch is occuring
-
         /*order:
         -Process arrival
         -Process starts using the CPU
@@ -214,7 +212,8 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
             while(!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick){
                 working_pid = unarrived_processes.front().pid;
                 move_process(tick + HALF_TCS, unarrived_processes, queue);                //semantically, the updated arrival time means the time it arrives in queue
-                std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
+                if(tick < 10000)
+                    std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
             }
         }
 
@@ -231,8 +230,9 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
 
                 //sets arrival time member to time that it completes burst
                 move_process(tick + queue.front().cpu_bursts.front(), queue, running_CPU_burst);
-                std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " 
-                << time_spent << "ms burst "  << queue_string(queue) << std::endl;
+                if(tick < 10000)
+                    std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " 
+                    << time_spent << "ms burst "  << queue_string(queue) << std::endl;
 
                 remove_first_cpu_burst(running_CPU_burst);
             }
@@ -240,19 +240,22 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
         
         //check for if the CPU process is done
         if(!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time == tick){
-            std::cout <<"time " << tick << "ms: Process " <<running_CPU_burst[0].pid << " completed a CPU burst; " <<running_CPU_burst[0].cpu_bursts.size() <<" bursts to go " << queue_string(queue) <<std::endl;
+            if(tick < 10000)
+                std::cout <<"time " << tick << "ms: Process " <<running_CPU_burst[0].pid << " completed a CPU burst; " <<running_CPU_burst[0].cpu_bursts.size() <<" bursts to go " << queue_string(queue) <<std::endl;
         }
         //Move process out of CPU and into i/o or to completed list
         if(remaining_CS_t == 0 && !running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick){
             if(running_CPU_burst[0].cpu_bursts.empty()){
                 // Process has completed all CPU bursts
                 std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
-                completed.push_back(running_CPU_burst.front());  // Move to completed list
-                running_CPU_burst.clear(); // Clear the running CPU burst
+                // completed.push_back(running_CPU_burst.front());  // Move to completed list
+                // running_CPU_burst.clear(); // Clear the running CPU burst
+                move_process(tick+HALF_TCS, running_CPU_burst, completed);
             }
             else{
-                std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
-                <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
+                if(tick < 10000)
+                    std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
+                    <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
                 remaining_CS_t = tcs;
                 move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
                 //remove_first_io_burst(blocking_on_io); // Remove the first I/O burst
@@ -265,8 +268,9 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
             remove_first_io_burst(blocking_on_io);
             working_pid = blocking_on_io[0].pid;
             move_process(tick + HALF_TCS, blocking_on_io, queue);
-            std::cout <<"time " << tick << "ms: Process " << working_pid
-            <<" completed I/O" << "; added to ready queue " << queue_string(queue) <<std::endl;
+            if(tick < 10000)
+                std::cout <<"time " << tick << "ms: Process " << working_pid
+                <<" completed I/O" << "; added to ready queue " << queue_string(queue) <<std::endl;
             remaining_CS_t = HALF_TCS;
         }
 
