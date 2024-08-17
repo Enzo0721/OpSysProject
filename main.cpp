@@ -12,7 +12,6 @@
 struct Process {
     std::string pid;
     int arrival_time;
-    int queue_entry_time = -1;
     bool cpuBound;
     std::vector<int> cpu_bursts;
     std::vector<int> io_bursts;
@@ -117,13 +116,14 @@ void remove_latest(std::vector<Process> & start, std::vector<Process> & end){
     std::cout << "hello world" << std::endl;
 }
 
-void move_process(int tcs, std::vector<Process> & start, std::vector<Process> & destination, int new_arrival){
+void move_process(int time_change, std::vector<Process> & start, std::vector<Process> & destination){
+                  //  ^^^^^^^^^^^^ for add 1/2*tcs for context switches
     if (!start.empty()) {
-        int moving_time = tcs / 2;
+        //int moving_time = tcs / 2;
         Process temp = start.front();
         start.erase(start.begin());
 
-        temp.arrival_time += (moving_time + new_arrival);
+        temp.arrival_time += time_change;
 
         auto it = std::lower_bound(destination.begin(), destination.end(), temp, compare_by_arrival_time);
         destination.insert(it, temp);
@@ -149,6 +149,21 @@ std::string queue_string(const std::vector<Process> & queue){
     return full_string;
 }
 
+void remove_first_cpu_burst(std::vector<Process>& running_CPU_burst) {
+    // Ensure that running_CPU_burst is not empty before trying to access its front
+    if (!running_CPU_burst.empty()) {
+        // Ensure that the process at the front has at least one CPU burst to remove
+        if (!running_CPU_burst.front().cpu_bursts.empty()) {
+            // Erase the first CPU burst
+            running_CPU_burst.front().cpu_bursts.erase(running_CPU_burst.front().cpu_bursts.begin());
+        } else {
+            std::cerr << "Error: No CPU bursts to remove for the running process." << std::endl;
+        }
+    } else {
+        std::cerr << "Error: No process is currently running." << std::endl;
+    }
+}
+
 void run_FCFS(std::vector<Process> & Processes, int tcs){
     int tick = 0;
     std::vector<Process> unarrived_processes;
@@ -160,54 +175,59 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
     std::vector<Process> queue;
     std::vector<Process> blocking_on_io;
     std::vector<Process> running_CPU_burst;
-    std::vector<Process> moving_to_completed;
+
     std::vector<Process> completed;
-    // for(const auto & p : unarrived_processes){
-    //     std::cout << p.pid << " " << p.arrival_time << std::endl;
-    // }
-    // std::cout << (*unarrived_processes.begin()).cpu_bursts.size() << std::endl;
-    // std::cout << *((*unarrived_processes.begin()).cpu_bursts.begin()) << std::endl;
-    // std::cout << *((*unarrived_processes.begin()).io_bursts.begin()) << std::endl;
+
+    int remaining_CS_t = -1;
+    const int HALF_TCS = (int)tcs/2;
+
+    //remaining context switch time, -1 means no context switch is occuring
+
     std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
-    while(tick < 10000){
+    while(tick < 70000){
         //To-do prevent processes from doing things while a context switch is occuring
 
-        /*checks:
-        -Check for newly arrived processes
-        -Check for processes blocked on io
-        -Check in queue for next process to begin CPU burst
-        -Check for processes that need to be moved from moving_to_completed to completed
+        /*order:
+        -Process arrival
+        -Process starts using the CPU
+        -Process finishes using the CPU
+        -Process starts an I/O burst
+        -Process finishes an I/O burst
         */
-       //Process & working_process;
        std::string working_pid;
 
        //checking for newly arrived processes
-       if(unarrived_processes.size() > 0){
-            while(unarrived_processes.size() > 0 && unarrived_processes.front().arrival_time == tick){
-                //working_process = *unarrived_processes.begin();
+       if(!unarrived_processes.empty()){
+            while(!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick){
                 working_pid = unarrived_processes.front().pid;
-                move_process(tcs, unarrived_processes, queue, 0);
+                move_process((int)tcs/2, unarrived_processes, queue);
+                //semantically, the updated arrival time means the time it arrives in queue
                 std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
                 
             }
         }
 
-        //beginning CPU burst
-        if(queue.size() > 0){
-            while(queue.size() > 0 && (*queue.begin()).arrival_time == tick){
-                while(queue.size() > 0 && (*queue.begin()).arrival_time == tick){
-                    if(queue.front().cpu_bursts.size() != 0){
-                        working_pid = queue.front().pid;
-                        int time_spent = queue.front().cpu_bursts.front();
+        if (remaining_CS_t > 0) {
+            remaining_CS_t--;
+        }
 
-                        move_process(tcs, queue, running_CPU_burst, tick + queue.front().cpu_bursts.front());
-                        std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " << time_spent << " burst "  << queue_string(queue) << std::endl;
-                        //working_process.cpu_bursts.erase(working_process.cpu_bursts.begin());
-                    }
-                }
+        //moving from queue to CPU
+        if(remaining_CS_t == -1 && queue.size() > 0 && running_CPU_burst.empty()){
+            if(queue.front().cpu_bursts.size() != 0){
+                working_pid = queue.front().pid; 
+                int time_spent = queue.front().cpu_bursts.front();
+                remaining_CS_t = tcs / 2;
+
+                //sets arrival time member to time that it completes burst
+                move_process(tick + queue.front().cpu_bursts.front(), queue, running_CPU_burst);
+                std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " 
+                << time_spent << "ms burst "  << queue_string(queue) << std::endl;
+
+                remove_first_cpu_burst(running_CPU_burst);
             }
         }
-            
+        
+        //moving from CPU to waiting on io
 
         tick++;
     }
