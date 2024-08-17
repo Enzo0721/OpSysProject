@@ -184,7 +184,7 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
     //remaining context switch time, -1 means no context switch is occuring
 
     std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
-    while(tick < 70000){
+    while(!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()){
         //To-do prevent processes from doing things while a context switch is occuring
 
         /*order:
