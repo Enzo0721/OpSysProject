@@ -22,6 +22,10 @@ struct Process {
     std::vector<int> io_bursts;
 };
 
+// struct Algorithm_Data{
+    
+// };
+
 double next_exp(double lambda, double upper_bound) {
     double exp_val;
     do {
@@ -50,14 +54,14 @@ std::vector<Process> generateProcesses(int n, int ncpu, double lambda, double up
             int cpu_burst = std::ceil(next_exp(lambda, upper_bound));
             if (p.cpuBound) cpu_burst *= 4;
             p.cpu_bursts.push_back(cpu_burst);
-            std::cout << "==> CPU burst " << cpu_burst << "ms";
+            //std::cout << "==> CPU burst " << cpu_burst << "ms";
             if (j < burstNum - 1) {  // don't make an io burst for last cpu burst
                 int io_burst = std::ceil(next_exp(lambda, upper_bound)) * 8;
                 if (p.cpuBound) io_burst /= 8;
                 p.io_bursts.push_back(io_burst);
-                std::cout << " ==> I/O burst " << io_burst << "ms";
+                //std::cout << " ==> I/O burst " << io_burst << "ms";
             }
-            std::cout << std::endl;
+            //std::cout << std::endl;
         }
         processes.push_back(p);
     }
@@ -68,8 +72,9 @@ void set_nan_zero(double & val){
     val = std::isnan(val) ? 0.0 : val;
 }
 
-void generateStatistics(const std::vector<Process>& processes, int n, int nCpu) {
-    std::ofstream outFile("simout.txt");
+
+
+void generateStatistics(const std::vector<Process>& processes, int n, int nCpu, std::ofstream & outFile) {
     outFile << std::fixed << std::setprecision(3);
     int nIo = n - nCpu;
     double cpuBoundCpuTotal = 0.0, ioBoundCpuTotal = 0.0, cpuBoundIoTotal = 0.0, ioBoundIoTotal = 0.0;
@@ -204,7 +209,7 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
     std::sort(unarrived_processes.begin(), unarrived_processes.end(), compare_by_arrival_time);
 
-    int num_processes = Processes.size();
+    //int num_processes = Processes.size();
 
     std::vector<Process> queue;
     std::vector<Process> blocking_on_io;
@@ -217,13 +222,6 @@ void run_FCFS(std::vector<Process> & Processes, int tcs){
 
     std::cout << "time 0ms: Simulator started for FCFS [Q empty]" << std::endl;
     while(!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()){
-        /*order:
-        -Process arrival
-        -Process starts using the CPU
-        -Process finishes using the CPU
-        -Process starts an I/O burst
-        -Process finishes an I/O burst
-        */
        std::string working_pid;
 
        //checking for newly arrived processes
@@ -338,7 +336,7 @@ void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
                 remaining_CS_t = tcs;  // Context switch
 
                 move_process(tick + time_spent, queue, running_CPU_burst);
-
+            
                 running_CPU_burst.front().prev_CPU_burst = time_spent;
 
                 remaining_CS_t = HALF_TCS;
@@ -390,115 +388,90 @@ void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
     std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SJF" << std::endl;
 }
 
-void run_RR(std::vector<Process> &Processes, int tcs, int tslice){
+void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
     int tick = 0;
     std::vector<Process> unarrived_processes;
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
     std::sort(unarrived_processes.begin(), unarrived_processes.end(), compare_by_arrival_time);
 
-    int num_processes = Processes.size();
-
     std::vector<Process> queue;
     std::vector<Process> blocking_on_io;
     std::vector<Process> running_CPU_burst;
+    std::vector<Process> completed;
 
-    std::vector<Process> completed; // To track completed processes
+    std::map<std::string, int> initial_bursts;
 
     int remaining_CS_t = 0;
-    const int HALF_TCS = (int)tcs/2;
-    int time_in_CPU = 0; //stores current amount of time that the processes being processed has been in the CPU
-    
+    int remaining_quantum = time_quantum;
+    const int HALF_TCS = tcs / 2;
 
     std::cout << "time 0ms: Simulator started for RR [Q empty]" << std::endl;
-    while(tick < 70000/*!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()*/){
-       std::string working_pid;
 
-       //checking for newly arrived processes
-       if(!unarrived_processes.empty()){
-            while(!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick){
-                working_pid = unarrived_processes.front().pid;
-                move_process(tick + HALF_TCS, unarrived_processes, queue, false);
-                if(tick < 10000)
-                    std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
-            }
+    while (!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()) {
+        std::string working_pid;
+
+        // Process arrivals
+        while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
+            working_pid = unarrived_processes.front().pid;
+            initial_bursts[working_pid] = unarrived_processes.front().cpu_bursts.front();
+            move_process(tick + HALF_TCS, unarrived_processes, queue, false);
+                std::cout << "time " << tick << "ms: Process " << working_pid << " arrived; added to ready queue " << queue_string(queue) << std::endl;
         }
 
         if (remaining_CS_t > 0) {
             remaining_CS_t--;
         }
 
-        //moving from queue to CPU
-        if(remaining_CS_t == 0 && running_CPU_burst.empty() && !queue.empty() && queue[0].arrival_time <= tick){
-            //arrival time is being used here to store when the process arrives in the CPU from the queue
-            move_process(tick + HALF_TCS, queue, running_CPU_burst, false);
-            remaining_CS_t = HALF_TCS;
-            
-            if (tick < 10000)
-                std::cout << "time " << tick << "ms: Process " << working_pid << " started using the CPU for " << running_CPU_burst[0].cpu_bursts[0] << "ms burst " << queue_string(queue) << std::endl;
+        // starting process when cpu idle
+        if (remaining_CS_t == 0 && running_CPU_burst.empty() && !queue.empty()) {
+            if (queue.front().arrival_time <= tick) {
+                working_pid = queue.front().pid;
+                int burst_time = queue.front().cpu_bursts.front();
+                remaining_quantum = time_quantum;
+
+                if (burst_time > remaining_quantum) {
+                    // Process will be preempted
+                    remaining_CS_t = tcs;
+                    move_process(tick + remaining_quantum, queue, running_CPU_burst, false);
+                    if (tick < 10000)
+                        std::cout << "time " << tick << "ms: Process " << working_pid << " started using the CPU for " << burst_time << "ms burst " << queue_string(queue) << std::endl;
+                } else {
+                    // Process will finish within the time slot
+                    remaining_CS_t = tcs;
+                    move_process(tick + burst_time, queue, running_CPU_burst, false);
+                    if (tick < 10000)
+                        std::cout << "time " << tick << "ms: Process " << working_pid << " started using the CPU for " << burst_time << "ms burst " << queue_string(queue) << std::endl;
+                }
+                remove_first_cpu_burst(running_CPU_burst);
+            }
+        }
+        if (!running_CPU_burst.empty()) {
+            int running_time = tick - (running_CPU_burst.front().arrival_time - remaining_quantum);
+
+            if (running_time >= remaining_quantum) {
+                // Process preemption
+                if (running_CPU_burst.front().cpu_bursts.front() > 0) {
+                    running_CPU_burst.front().cpu_bursts.front() -= remaining_quantum;
+                    move_process(tick + HALF_TCS, running_CPU_burst, queue, false);
+                    if (tick < 10000)
+                        std::cout << "time " << tick << "ms: Time slice expired; process " << running_CPU_burst.front().pid << " preempted with " << running_CPU_burst.front().cpu_bursts.front() << "ms remaining (started with " << initial_bursts[running_CPU_burst.front().pid] << "ms)" << queue_string(queue) << std::endl;
+                } else {
+                    // Process completion
+                    std::cout << "time " << tick << "ms: Process " << running_CPU_burst.front().pid << " terminated " << queue_string(queue) << std::endl;
+                    completed.push_back(running_CPU_burst.front()); //*********
+                    running_CPU_burst.clear();
+                }
+                remaining_CS_t = HALF_TCS;
+            }
         }
 
-        //
-        if(!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick){
-            
-            if(time_in_CPU >= tslice || running_CPU_burst[0].CPU_burst_completed >= running_CPU_burst[0].cpu_bursts[0]){
-                //case 0: either time slice or burst_completed has filled
-                if(!queue.empty()){ // if queue is empty, time_in_CPU and CPU_burst_completed suspended
-                    time_in_CPU = 0;
-                    running_CPU_burst[0].CPU_burst_completed = 0;
-                }
-                    
-                if(running_CPU_burst[0].CPU_burst_completed >= running_CPU_burst[0].cpu_bursts[0]){
-                    //case 1: finish burst, move to I/O
-                    if(running_CPU_burst[0].cpu_bursts.empty()){
-                        // case 1.1 process finished ALL bursts
-                        std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
-                        // completed.push_back(running_CPU_burst.front());  // Move to completed list
-                        remaining_CS_t = HALF_TCS;
-                        move_process(tick+HALF_TCS, running_CPU_burst, completed);
-                        remove_first_cpu_burst(running_CPU_burst);
-                    }
-                    else{
-                        // case 1.2 process hasn't finished all bursts
-                        if(tick < 10000)
-                            std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
-                            <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
-                        remaining_CS_t = tcs;
-                        move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io, false);
-                    }
-                }
-                else if (time_in_CPU >= tslice){
-                    //case 2: ***PREEMPTION*** burst unfinished, timeslice expired, move back to rear of queue
-                    if(!queue.empty()){
-                        std::cout << "time " << tick << "ms: Time slice expired; preempting process " << running_CPU_burst[0].pid 
-                        <<"with "<< running_CPU_burst[0].cpu_bursts[0] - running_CPU_burst[0].CPU_burst_completed << "ms remaining" << queue_string(queue)<< std::endl; 
-
-                        move_process(tick + HALF_TCS, running_CPU_burst, queue, false);
-                        remaining_CS_t = tcs;
-                    }
-                    else{
-                        std::cout << "time " << tick << "ms: Time slice expired; no preemption because ready queue is empty [Q empty]" << std::endl;
-                    }
-                        
-                }
-                else{
-                    std::cerr <<"time " << tick<< ": something weird happened" << std::endl;
-                }
-            }
-            else{ // if time in CPU is less than timeslice and CPU burst hasn't completed
-                ++time_in_CPU;
-                ++running_CPU_burst[0].CPU_burst_completed;
-            }
-                
-        }
-        
-        //moving process out of io and back into queue
-        if(!blocking_on_io.empty() && remaining_CS_t == 0 && blocking_on_io[0].arrival_time <= tick){
+        // Process I/O completion
+        if (!blocking_on_io.empty() && blocking_on_io.front().arrival_time == tick) {
             remove_first_io_burst(blocking_on_io);
-            working_pid = blocking_on_io[0].pid;
+            working_pid = blocking_on_io.front().pid;
             move_process(tick + HALF_TCS, blocking_on_io, queue, false);
-            if(tick < 10000)
-                std::cout <<"time " << tick << "ms: Process " << working_pid
-                <<" completed I/O" << "; added to ready queue " << queue_string(queue) <<std::endl;
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Process " << working_pid << " completed I/O; added to ready queue " << queue_string(queue) << std::endl;
             remaining_CS_t = HALF_TCS;
         }
 
@@ -506,8 +479,116 @@ void run_RR(std::vector<Process> &Processes, int tcs, int tslice){
     }
 
     std::cout << "time " << tick + HALF_TCS - 1 << "ms: Simulator ended for RR" << std::endl;
-
 }
+
+void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
+    int tick = 0;
+    std::vector<Process> unarrived_processes;
+    std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
+    std::sort(unarrived_processes.begin(), unarrived_processes.end(), compare_by_arrival_time);
+
+    std::vector<Process> queue;
+    std::vector<Process> blocking_on_io;
+    std::vector<Process> running_CPU_burst;
+    std::vector<Process> completed;
+
+    int remaining_CS_t = 0;
+    const int HALF_TCS = tcs / 2;
+    
+    std::cout << "time 0ms: Simulator started for SRT [Q empty]" << std::endl;
+
+    while (!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()) {
+        std::string working_pid;
+        if (!unarrived_processes.empty()) {
+            while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
+                working_pid = unarrived_processes.front().pid;
+                move_process(tick + HALF_TCS, unarrived_processes, queue);
+                std::sort(queue.begin(), queue.end(), compare_by_burst_time);
+
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << unarrived_processes.front().tau 
+                              << "ms) arrived; added to ready queue " << queue_string(queue) << std::endl;
+
+                // check for preemption
+                if (!running_CPU_burst.empty() && running_CPU_burst.front().cpu_bursts.front() > queue.front().cpu_bursts.front()) {
+                    if (tick < 10000)
+                        std::cout << "time " << tick << "ms: Process " << queue.front().pid << " (tau " << queue.front().tau
+                                  << "ms) will preempt " << running_CPU_burst.front().pid << std::endl;
+                    move_process(tick + HALF_TCS, running_CPU_burst, queue);
+                    std::sort(queue.begin(), queue.end(), compare_by_burst_time);  // have to continuously sort by remaining time
+                }
+            }
+        }
+
+        if (remaining_CS_t > 0) {
+            remaining_CS_t--;
+        }
+        if (remaining_CS_t == 0 && running_CPU_burst.empty() && !queue.empty()) {
+            if (queue.front().arrival_time <= tick) {
+                working_pid = queue.front().pid;
+                int time_spent = queue.front().cpu_bursts.front();
+                remaining_CS_t = tcs;
+
+                move_process(tick + time_spent, queue, running_CPU_burst);
+                running_CPU_burst.front().prev_CPU_burst = time_spent;
+
+                remaining_CS_t = HALF_TCS;
+
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << queue.front().tau
+                              << "ms) started using the CPU for " << time_spent << "ms burst " << queue_string(queue) << std::endl;
+                remove_first_cpu_burst(running_CPU_burst);
+            }
+        }
+
+        if (!running_CPU_burst.empty() && running_CPU_burst[0].arrival_time <= tick) {
+            int old_tau = running_CPU_burst[0].tau;
+            running_CPU_burst[0].tau = calculate_tau(old_tau, running_CPU_burst[0].prev_CPU_burst, alpha);
+            if (running_CPU_burst[0].prev_CPU_burst == -1) {
+                std::cerr << "Attempted to recalculate tau on a process that has not been in the CPU yet" << std::endl;
+            }
+
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " (tau " << old_tau
+                          << "ms) completed a CPU burst; " << running_CPU_burst[0].cpu_bursts.size() - 1
+                          << " bursts to go " << queue_string(queue) << std::endl;
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Recalculated tau for process " << running_CPU_burst[0].pid
+                          << ": old tau " << old_tau << "ms ==> new tau " << running_CPU_burst[0].tau << "ms " << queue_string(queue) << std::endl;
+
+            if (running_CPU_burst[0].cpu_bursts.empty()) {
+                std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
+                move_process(tick + HALF_TCS, running_CPU_burst, completed);
+            } else {
+                if (tick < 10000)
+                    std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid
+                              << " switching out of CPU; blocking on I/O until time "
+                              << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) << std::endl;
+                remaining_CS_t = tcs;
+                move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
+            }
+        }
+
+        if (!blocking_on_io.empty() && blocking_on_io[0].arrival_time <= tick) {
+            remove_first_io_burst(blocking_on_io);
+            working_pid = blocking_on_io[0].pid;
+            move_process(tick + HALF_TCS, blocking_on_io, queue);
+            std::sort(queue.begin(), queue.end(), compare_by_burst_time); 
+
+            if (tick < 10000)
+                std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << blocking_on_io[0].tau
+                          << "ms) completed I/O; added to ready queue " << queue_string(queue) << std::endl;
+
+            remaining_CS_t = HALF_TCS;
+        }
+
+        tick++;
+    }
+
+    std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SRT" << std::endl;
+}
+
+
 
 int main(int argc, char** argv) {
     if (argc != 9) {
@@ -529,11 +610,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     srand48(seed);
+    std::ofstream outFile("simout.txt");
+
     std::cout << "<<< PROJECT PART I" << std::endl;
     std::cout << "<<< -- process set (n=" << n << ") with " << ncpu << " CPU-bound process" << (ncpu == 1 ? "" : "es") << std::endl;
     std::cout << "<<< -- seed=" << seed << "; lambda=" << std::fixed << std::setprecision(6) << lambda << "; bound=" << std::setprecision(0) << upper_bound << std::endl;
     std::vector<Process> Processes = generateProcesses(n, ncpu, lambda, upper_bound);
-    generateStatistics(Processes, n, ncpu);
+    generateStatistics(Processes, n, ncpu, outFile);
 
     std::cout << "<<< PROJECT PART II"<< std::endl;
     std::cout << "<<< -- t_cs="<< tcs << "ms; alpha="<< std::fixed << std::setprecision(2) << alpha << "; t_slice=" << tslice <<"ms" << std::endl;
@@ -541,6 +624,11 @@ int main(int argc, char** argv) {
     std:: cout << std::endl;
     run_SJF(Processes, tcs, alpha);
     std:: cout << std::endl;
-    run_RR(Processes, tcs, tslice);
+    run_SRT(Processes, tcs, alpha);
+    // std::cout << std::endl;
+    // run_RR(Processes, tcs, tslice);//segfaults
+
+    outFile.close();
+
     return 0;
 }
