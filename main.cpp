@@ -82,7 +82,7 @@ std::vector<Process> generateProcesses(int n, int ncpu, double lambda, double up
         p.tau = (int)1/lambda;
         int burstNum = std::ceil(drand48() * 32);
         std::cout << (p.cpuBound ? "CPU-bound" : "I/O-bound") << " process " << p.pid 
-                << ": arrival time " << p.arrival_time << "ms; " << burstNum << " CPU " << (burstNum == 1 ? "burst" : "bursts") << ":" << std::endl;
+                << ": arrival time " << p.arrival_time << "ms; " << burstNum << " CPU " << (burstNum == 1 ? "burst" : "bursts") << std::endl;
 
         for (int j = 0; j < burstNum; j++) {
             int cpu_burst = std::ceil(next_exp(lambda, upper_bound));
@@ -99,6 +99,7 @@ std::vector<Process> generateProcesses(int n, int ncpu, double lambda, double up
         }
         processes.push_back(p);
     }
+    std::cout << std::endl;
     return processes;
 }
 
@@ -242,50 +243,79 @@ int calc_bt(const Process & working_process){
     return total;
 }
 
-void generate_algorithm_simout(const Algorithm_Data & data, std::ostream & outfile, std::string algorithm_name){
+void generate_algorithm_simout(const Algorithm_Data& data, std::ostream& outfile, std::string algorithm_name) {
     int total_cpu_time = data.CPUB_total_burst + data.IOB_total_burst;
-    double CPU_util = ((double)total_cpu_time/data.total_simulation_time) * 100.0;
+    double CPU_util = ((double)total_cpu_time / data.total_simulation_time) * 100.0 + 0.001;
 
     int total_processes = data.num_IOB + data.num_CPUB;
+    int total_bursts = data.num_IOB + data.num_CPUB;  // Calculating total bursts
 
-    int IOB_TAT = data.IOB_total_completion - data.IOB_total_arrival; // sum IO TAT
-    int CPUB_TAT =  data.CPUB_total_completion - data.CPUB_total_arrival; // sum CPU TAT
+    int IOB_TAT = data.IOB_total_completion - data.IOB_total_arrival;  // sum IO TAT
+    int CPUB_TAT = data.CPUB_total_completion - data.CPUB_total_arrival;  // sum CPU TAT
     int total_TAT = IOB_TAT + CPUB_TAT;
 
-    int IOB_WT = IOB_TAT-data.IOB_total_burst; // sum IO WT
-    int CPUB_WT = CPUB_TAT-data.CPUB_total_burst; // sum CPU WT
+    int IOB_WT = IOB_TAT - data.IOB_total_burst;  // sum IO WT
+    int CPUB_WT = CPUB_TAT - data.CPUB_total_burst;  // sum CPU WT
     int total_WT = IOB_WT + CPUB_WT;
 
-    int IOB_ConSwitches = data.IOB_context_switches; 
+    int IOB_ConSwitches = data.IOB_context_switches;
     int CPUB_ConSwitches = data.CPUB_context_switches;
+    int total_ConSwitches = IOB_ConSwitches + CPUB_ConSwitches;
 
-    double IOB_oneTS = ((double)data.IOB_RR_one_burst/data.num_IOB);
-    double CPUB_oneTS = ((double)data.CPUB_RR_one_burst/data.num_IOB);
-    
+    int IOB_Preemptions = data.IOB_preemptions;
+    int CPUB_Preemptions = data.CPUB_preemptions;
+    int total_Preemptions = IOB_Preemptions + CPUB_Preemptions;
+
+    double IOB_oneTS = (data.num_IOB > 0) ? (double)data.IOB_RR_one_burst / data.num_IOB : 0.0;
+    double CPUB_oneTS = (data.num_CPUB > 0) ? (double)data.CPUB_RR_one_burst / data.num_CPUB : 0.0;
+    double overall_oneTS = (total_bursts > 0) ? (double)(data.IOB_RR_one_burst + data.CPUB_RR_one_burst) / total_bursts : 0.0;
+
     outfile << "Algorithm " << algorithm_name << std::endl;
     outfile << "-- CPU utilization: " << std::fixed << std::setprecision(3) << CPU_util << "%" << std::endl;
 
-    outfile << "-- CPU-bound average wait time: " << std::fixed << std::setprecision(3) << (double)CPUB_WT/data.num_CPUB << std::endl;
-    outfile << "-- I/O-bound average wait time: " << std::fixed << std::setprecision(3) << (double)IOB_WT/data.num_IOB << std::endl;
-    outfile << "-- overall average wait time: " << std::fixed << std::setprecision(3) << (double)total_WT/total_processes << std::endl;
+    if (algorithm_name == "RR") {
+        // Specific formatting for RR
+        outfile << "-- CPU-bound average wait time: " << std::fixed << std::setprecision(3) << (double)CPUB_WT / data.num_CPUB << " ms" << std::endl;
+        outfile << "-- I/O-bound average wait time: " << std::fixed << std::setprecision(3) << (double)IOB_WT / data.num_IOB << " ms" << std::endl;
+        outfile << "-- overall average wait time: " << std::fixed << std::setprecision(3) << (double)total_WT / total_processes << " ms" << std::endl;
 
-    outfile << "-- CPU-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)CPUB_TAT/data.num_CPUB << std::endl;
-    outfile << "-- I/O-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)IOB_TAT/data.num_IOB << std::endl;
-    outfile << "-- overall average turnaround time: "<< std::fixed << std::setprecision(3) << (double)total_TAT/total_processes << std::endl;;
+        outfile << "-- CPU-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)CPUB_TAT / data.num_CPUB << " ms" << std::endl;
+        outfile << "-- I/O-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)IOB_TAT / data.num_IOB << " ms" << std::endl;
+        outfile << "-- overall average turnaround time: " << std::fixed << std::setprecision(3) << (double)total_TAT / total_processes << " ms" << std::endl;
 
-    outfile << "-- CPU-bound number of context switches: " << CPUB_ConSwitches << std::endl;
-    outfile << "-- I/O-bound number of context switches: " << IOB_ConSwitches << std::endl;
+        outfile << "-- CPU-bound number of context switches: " << CPUB_ConSwitches << std::endl;
+        outfile << "-- I/O-bound number of context switches: " << IOB_ConSwitches << std::endl;
+        outfile << "-- overall number of context switches: " << total_ConSwitches << std::endl;
 
-    if(algorithm_name == "RR"){
-        outfile << "-- CPU-bound percentage of CPU bursts completed within one time slice: " << CPUB_ConSwitches << std::endl;
-        outfile << "-- I/O-bound percentage of CPU bursts completed within one time slice: " << IOB_ConSwitches << std::endl;
-        outfile << "-- overall percentage of CPU bursts completed within one time slice: " << IOB_ConSwitches << std::endl;
+        outfile << "-- CPU-bound number of preemptions: " << CPUB_Preemptions << std::endl;
+        outfile << "-- I/O-bound number of preemptions: " << IOB_Preemptions << std::endl;
+        outfile << "-- overall number of preemptions: " << total_Preemptions << std::endl;
+
+        outfile << "-- CPU-bound percentage of CPU bursts completed within one time slice: " << std::fixed << std::setprecision(3) << (CPUB_oneTS * 100.0) << "%" << std::endl;
+        outfile << "-- I/O-bound percentage of CPU bursts completed within one time slice: " << std::fixed << std::setprecision(3) << (IOB_oneTS * 100.0) << "%" << std::endl;
+        outfile << "-- overall percentage of CPU bursts completed within one time slice: " << std::fixed << std::setprecision(3) << (overall_oneTS * 100.0) << "%" << std::endl;
+    } else {
+        // Default formatting for other algorithms
+        outfile << "-- CPU-bound average wait time: " << std::fixed << std::setprecision(3) << (double)CPUB_WT / data.num_CPUB << std::endl;
+        outfile << "-- I/O-bound average wait time: " << std::fixed << std::setprecision(3) << (double)IOB_WT / data.num_IOB << std::endl;
+        outfile << "-- overall average wait time: " << std::fixed << std::setprecision(3) << (double)total_WT / total_processes << std::endl;
+
+        outfile << "-- CPU-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)CPUB_TAT / data.num_CPUB << std::endl;
+        outfile << "-- I/O-bound average turnaround time: " << std::fixed << std::setprecision(3) << (double)IOB_TAT / data.num_IOB << std::endl;
+        outfile << "-- overall average turnaround time: " << std::fixed << std::setprecision(3) << (double)total_TAT / total_processes << std::endl;
+
+        outfile << "-- CPU-bound number of context switches: " << CPUB_ConSwitches << std::endl;
+        outfile << "-- I/O-bound number of context switches: " << IOB_ConSwitches << std::endl;
+        outfile << "-- overall number of context switches: " << total_ConSwitches << std::endl;
+
+        outfile << "-- CPU-bound number of preemptions: " << CPUB_Preemptions << std::endl;
+        outfile << "-- I/O-bound number of preemptions: " << IOB_Preemptions << std::endl;
+        outfile << "-- overall number of preemptions: " << total_Preemptions << std::endl;
     }
 
     outfile << std::endl;
-
-
 }
+
 
 void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile){
     int tick = 0;
@@ -318,14 +348,22 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
                     algo_data.num_CPUB++;
                     algo_data.CPUB_total_arrival += unarrived_processes[0].arrival_time;
                     algo_data.CPUB_total_burst += calc_bt(unarrived_processes[0]);
+                    algo_data.CPUB_context_switches += unarrived_processes[0].cpu_bursts.size();
                 }
                 else{
                     algo_data.num_IOB++;
                     algo_data.IOB_total_arrival += unarrived_processes[0].arrival_time;
                     algo_data.IOB_total_burst += calc_bt(unarrived_processes[0]);
+                    algo_data.IOB_context_switches += unarrived_processes[0].cpu_bursts.size();
                 }
 
                 working_pid = unarrived_processes.front().pid;
+                // if(unarrived_processes.front().cpuBound){
+                //     ++algo_data.CPUB_context_switches;
+                // }
+                // else{
+                //     ++algo_data.IOB_context_switches;
+                // }
                 move_process(tick + HALF_TCS, unarrived_processes, queue);
                 if(tick < 10000)
                     std::cout << "time " << tick << "ms: " << "Process "<< working_pid <<" arrived; added to ready queue " << queue_string(queue) <<std::endl;
@@ -344,6 +382,12 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
                 remaining_CS_t = HALF_TCS;
 
                 //sets arrival time member to time that it completes burst
+                // if(queue[0].cpuBound){
+                //     ++algo_data.CPUB_context_switches;
+                // }
+                // else{
+                //     ++algo_data.IOB_context_switches;
+                // }
                 move_process(tick + queue.front().cpu_bursts.front(), queue, running_CPU_burst);
                 if(tick < 10000)
                     std::cout << "time " << tick << "ms: " << "Process "<< working_pid << " started using the CPU for " 
@@ -366,11 +410,15 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
                 // completed.push_back(running_CPU_burst.front());  // Move to completed list
                 // running_CPU_burst.clear(); // Clear the running CPU burst
 
-                if(running_CPU_burst[0].cpuBound)
-                    algo_data.CPUB_total_completion += tick;
-                else
-                    algo_data.IOB_total_completion += tick;
-
+                // if(running_CPU_burst[0].cpuBound){
+                //     algo_data.CPUB_total_completion += tick;
+                //     algo_data.CPUB_context_switches++;
+                // }
+                // else{
+                //     algo_data.IOB_total_completion += tick;
+                //     algo_data.IOB_context_switches++;
+                // }
+                
                 move_process(tick+HALF_TCS, running_CPU_burst, completed);
             }
             else{
@@ -378,6 +426,12 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
                     std::cout <<"time " << tick << "ms: Process " << running_CPU_burst[0].pid
                     <<" switching out of CPU; blocking on I/O until time " << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) <<std::endl;
                 remaining_CS_t = tcs;
+                // if(running_CPU_burst[0].cpuBound){
+                //     algo_data.CPUB_context_switches++;
+                // }
+                // else{
+                //     algo_data.IOB_context_switches++;
+                // }
                 move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
                 //remove_first_io_burst(blocking_on_io); // Remove the first I/O burst
             }
@@ -388,6 +442,12 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
         if(!blocking_on_io.empty() && remaining_CS_t == 0 && blocking_on_io[0].arrival_time <= tick){
             remove_first_io_burst(blocking_on_io);
             working_pid = blocking_on_io[0].pid;
+            // if(blocking_on_io[0].cpuBound){
+            //     algo_data.CPUB_context_switches++;
+            // }
+            // else{
+            //     algo_data.IOB_context_switches++;
+            // }
             move_process(tick + HALF_TCS, blocking_on_io, queue);
             if(tick < 10000)
                 std::cout <<"time " << tick << "ms: Process " << working_pid
@@ -403,7 +463,7 @@ void run_FCFS(std::vector<Process> & Processes, int tcs, std::ostream & outfile)
     std::cout << "time " << tick + HALF_TCS - 1 << "ms: Simulator ended for FCFS [Q empty]" << std::endl;
 }
 
-void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
+void run_SJF(std::vector<Process> &Processes, int tcs, float alpha, std::ostream & outfile) {
     int tick = 0;
     std::vector<Process> unarrived_processes;
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
@@ -422,20 +482,22 @@ void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
     std::cout << "time 0ms: Simulator started for SJF [Q empty]" << std::endl;
     
     while (!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()) {
-        if(unarrived_processes[0].cpuBound){
-                    algo_data.num_CPUB++;
-                    algo_data.CPUB_total_arrival += unarrived_processes[0].arrival_time;
-                    algo_data.CPUB_total_burst += calc_bt(unarrived_processes[0]);
-        }
-        else{
-            algo_data.num_IOB++;
-            algo_data.IOB_total_arrival += unarrived_processes[0].arrival_time;
-            algo_data.IOB_total_burst += calc_bt(unarrived_processes[0]);
-        }
         
         std::string working_pid;
         if (!unarrived_processes.empty()) {
             while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
+                if(unarrived_processes[0].cpuBound){
+                    algo_data.num_CPUB++;
+                    algo_data.CPUB_total_arrival += unarrived_processes[0].arrival_time;
+                    algo_data.CPUB_total_burst += calc_bt(unarrived_processes[0]);
+                    algo_data.CPUB_context_switches += unarrived_processes[0].cpu_bursts.size();
+                }
+                else{
+                    algo_data.num_IOB++;
+                    algo_data.IOB_total_arrival += unarrived_processes[0].arrival_time;
+                    algo_data.IOB_total_burst += calc_bt(unarrived_processes[0]);
+                    algo_data.IOB_context_switches += unarrived_processes[0].cpu_bursts.size();
+                }
                 working_pid = unarrived_processes.front().pid;
                 move_process(tick + HALF_TCS, unarrived_processes, queue);
                 std::sort(queue.begin(), queue.end(), compare_by_burst_time);
@@ -510,10 +572,12 @@ void run_SJF(std::vector<Process> &Processes, int tcs, float alpha) {
 
         tick++;
     }
-    std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SJF" << std::endl;
+    algo_data.total_simulation_time = tick + HALF_TCS - 1;
+    std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SJF [Q empty]" << std::endl;
+    generate_algorithm_simout(algo_data, outfile, "SJF");
 }
 
-void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
+void run_RR(std::vector<Process>& Processes, int tcs, int time_quantum, std::ostream& outfile) {
     int tick = 0;
     std::vector<Process> unarrived_processes;
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
@@ -524,11 +588,20 @@ void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
     std::vector<Process> running_CPU_burst;
     std::vector<Process> completed;
 
-    std::map<std::string, int> initial_bursts;  
+    std::map<std::string, int> initial_bursts;
 
     int remaining_CS_t = 0;
     int remaining_quantum = time_quantum;
     const int HALF_TCS = tcs / 2;
+
+    Algorithm_Data rrData = {};
+    rrData.total_simulation_time = 0;
+    rrData.num_IOB = 0;
+    rrData.num_CPUB = 0;
+    rrData.IOB_RR_one_burst = 0;
+    rrData.CPUB_RR_one_burst = 0;
+    rrData.IOB_preemptions = 0;  // Initialize preemptions
+    rrData.CPUB_preemptions = 0;  // Initialize preemptions
 
     std::cout << "time 0ms: Simulator started for RR [Q empty]" << std::endl;
 
@@ -536,9 +609,22 @@ void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
         std::string working_pid;
         while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
             working_pid = unarrived_processes.front().pid;
-            initial_bursts[working_pid] = unarrived_processes.front().cpu_bursts.front();  
+            initial_bursts[working_pid] = unarrived_processes.front().cpu_bursts.front();
             move_process(tick + HALF_TCS, unarrived_processes, queue, false);
             std::cout << "time " << tick << "ms: Process " << working_pid << " arrived; added to ready queue " << queue_string(queue) << std::endl;
+
+            int total_cpu_time = 0;
+            int total_io_time = 0;
+            for (int burst : queue.back().cpu_bursts) total_cpu_time += burst;
+            for (int burst : queue.back().io_bursts) total_io_time += burst;
+
+            if (total_io_time > total_cpu_time) {
+                rrData.num_IOB++;
+                rrData.IOB_total_arrival += tick;
+            } else {
+                rrData.num_CPUB++;
+                rrData.CPUB_total_arrival += tick;
+            }
         }
 
         if (remaining_CS_t > 0) {
@@ -547,8 +633,8 @@ void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
 
         if (remaining_CS_t == 0 && running_CPU_burst.empty() && !queue.empty()) {
             working_pid = queue.front().pid;
-            int burst_time = queue.front().cpu_bursts.front();  
-            remaining_quantum = time_quantum;  
+            int burst_time = queue.front().cpu_bursts.front();
+            remaining_quantum = time_quantum;
 
             std::cout << "time " << tick << "ms: Process " << working_pid
                       << " started using the CPU for " << burst_time << "ms burst "
@@ -560,48 +646,82 @@ void run_RR(std::vector<Process> &Processes, int tcs, int time_quantum) {
             } else {
                 remaining_CS_t = tcs;
                 move_process(tick + burst_time, queue, running_CPU_burst, false);
+
+                int total_cpu_time = 0;
+                int total_io_time = 0;
+                for (int burst : running_CPU_burst.front().cpu_bursts) total_cpu_time += burst;
+                for (int burst : running_CPU_burst.front().io_bursts) total_io_time += burst;
+
+                if (total_io_time > total_cpu_time) {
+                    rrData.IOB_RR_one_burst++;
+                } else {
+                    rrData.CPUB_RR_one_burst++;
+                }
             }
+
+            rrData.CPUB_total_burst += burst_time;
+            rrData.CPUB_context_switches++;
         }
+
         if (!running_CPU_burst.empty()) {
             int running_time = tick - (running_CPU_burst.front().arrival_time - remaining_quantum);
 
             if (running_time >= remaining_quantum) {  // preemption
-                if (running_CPU_burst.front().cpu_bursts.front() > remaining_quantum) {
-                    // decrement the burst time by the time used
-                    running_CPU_burst.front().cpu_bursts.front() -= remaining_quantum;
-                    move_process(tick + HALF_TCS, running_CPU_burst, queue, false);
-                    std::cout << "time " << tick << "ms: Time slice expired; process "
-                              << running_CPU_burst.front().pid << " preempted with "
-                              << running_CPU_burst.front().cpu_bursts.front()
-                              << "ms remaining " << queue_string(queue) << std::endl;
-                } else {  // Process finished its burst
+                int time_used = std::min(remaining_quantum, running_CPU_burst.front().cpu_bursts.front());
+                running_CPU_burst.front().cpu_bursts.front() -= time_used;
+
+                if (running_CPU_burst.front().cpu_bursts.front() == 0) {
                     std::cout << "time " << tick << "ms: Process "
                               << running_CPU_burst.front().pid << " terminated "
                               << queue_string(queue) << std::endl;
                     completed.push_back(running_CPU_burst.front());
                     running_CPU_burst.clear();
+                    rrData.CPUB_total_completion += tick + HALF_TCS;
+                } else {
+                    move_process(tick + HALF_TCS, running_CPU_burst, queue, false);
+                    std::cout << "time " << tick << "ms: Time slice expired; process "
+                              << running_CPU_burst.front().pid << " preempted with "
+                              << running_CPU_burst.front().cpu_bursts.front()
+                              << "ms remaining " << queue_string(queue) << std::endl;
+
+                    rrData.CPUB_preemptions++;  // Count preemption for CPU-bound processes
                 }
-                remaining_CS_t = HALF_TCS;  // Switch 
+                remaining_CS_t = HALF_TCS;
             }
         }
 
-        // Handle I/O 
         if (!blocking_on_io.empty() && blocking_on_io.front().arrival_time == tick) {
-            remove_first_io_burst(blocking_on_io);
+            if (!blocking_on_io.front().io_bursts.empty()) {
+                blocking_on_io.front().io_bursts.erase(blocking_on_io.front().io_bursts.begin());
+            }
             working_pid = blocking_on_io.front().pid;
             move_process(tick + HALF_TCS, blocking_on_io, queue, false);
             std::cout << "time " << tick << "ms: Process " << working_pid
                       << " completed I/O; added to ready queue " << queue_string(queue) << std::endl;
             remaining_CS_t = HALF_TCS;
+            rrData.IOB_total_completion += tick + HALF_TCS;
+            rrData.IOB_context_switches++;
+            if (!blocking_on_io.front().io_bursts.empty()) {
+                rrData.IOB_total_burst += blocking_on_io.front().io_bursts.front();
+            }
+            rrData.IOB_preemptions++;  // Count preemption for I/O-bound processes
         }
         tick++;
     }
 
-    std::cout << "time " << tick + HALF_TCS - 1 << "ms: Simulator ended for RR" << std::endl;
+    rrData.total_simulation_time = tick + HALF_TCS - 1;
+
+    // Calculate percentages for RR data
+    rrData.CPUB_RR_one_burst = (rrData.num_CPUB > 0) ? (rrData.CPUB_RR_one_burst / static_cast<double>(rrData.num_CPUB)) * 100.0 : 0.0;
+    rrData.IOB_RR_one_burst = (rrData.num_IOB > 0) ? (rrData.IOB_RR_one_burst / static_cast<double>(rrData.num_IOB)) * 100.0 : 0.0;
+
+    std::cout << "time " << tick + HALF_TCS - 1 << "ms: Simulator ended for RR [Q empty]" << std::endl;
+
+    generate_algorithm_simout(rrData, outfile, "RR");
 }
 
 
-void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
+void run_SRT(std::vector<Process>& Processes, int tcs, float alpha, std::ostream& outfile) {
     int tick = 0;
     std::vector<Process> unarrived_processes;
     std::copy(Processes.begin(), Processes.end(), std::back_inserter(unarrived_processes));
@@ -614,28 +734,49 @@ void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
 
     int remaining_CS_t = 0;
     const int HALF_TCS = tcs / 2;
-    
+
+    Algorithm_Data srtData = {};  // init to zero
+
     std::cout << "time 0ms: Simulator started for SRT [Q empty]" << std::endl;
 
     while (!unarrived_processes.empty() || !queue.empty() || !blocking_on_io.empty() || !running_CPU_burst.empty()) {
         std::string working_pid;
+
         if (!unarrived_processes.empty()) {
             while (!unarrived_processes.empty() && unarrived_processes.front().arrival_time == tick) {
                 working_pid = unarrived_processes.front().pid;
                 move_process(tick + HALF_TCS, unarrived_processes, queue);
                 std::sort(queue.begin(), queue.end(), compare_by_burst_time);
+                int total_cpu_time = 0;
+                int total_io_time = 0;
+                for (int burst : queue.back().cpu_bursts) total_cpu_time += burst;
+                for (int burst : queue.back().io_bursts) total_io_time += burst;
+
+                if (total_io_time > total_cpu_time) {
+                    srtData.num_IOB++;
+                    srtData.IOB_total_arrival += tick;
+                } else {
+                    srtData.num_CPUB++;
+                    srtData.CPUB_total_arrival += tick;
+                }
 
                 if (tick < 10000)
                     std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << unarrived_processes.front().tau 
                               << "ms) arrived; added to ready queue " << queue_string(queue) << std::endl;
-
-                // check for preemption
                 if (!running_CPU_burst.empty() && running_CPU_burst.front().cpu_bursts.front() > queue.front().cpu_bursts.front()) {
                     if (tick < 10000)
                         std::cout << "time " << tick << "ms: Process " << queue.front().pid << " (tau " << queue.front().tau
                                   << "ms) will preempt " << running_CPU_burst.front().pid << std::endl;
+
+                    // record preemption
+                    if (total_io_time > total_cpu_time) {
+                        srtData.IOB_preemptions++;
+                    } else {
+                        srtData.CPUB_preemptions++;
+                    }
+
                     move_process(tick + HALF_TCS, running_CPU_burst, queue);
-                    std::sort(queue.begin(), queue.end(), compare_by_burst_time);  // have to continuously sort by remaining time
+                    std::sort(queue.begin(), queue.end(), compare_by_burst_time);  // Continuously sort by remaining time
                 }
             }
         }
@@ -658,6 +799,10 @@ void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
                     std::cout << "time " << tick << "ms: Process " << working_pid << " (tau " << queue.front().tau
                               << "ms) started using the CPU for " << time_spent << "ms burst " << queue_string(queue) << std::endl;
                 remove_first_cpu_burst(running_CPU_burst);
+
+                // context switches and bursts
+                srtData.CPUB_total_burst += time_spent;
+                srtData.CPUB_context_switches++;
             }
         }
 
@@ -679,6 +824,7 @@ void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
             if (running_CPU_burst[0].cpu_bursts.empty()) {
                 std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid << " terminated " << queue_string(queue) << std::endl;
                 move_process(tick + HALF_TCS, running_CPU_burst, completed);
+                srtData.CPUB_total_completion += tick + HALF_TCS;
             } else {
                 if (tick < 10000)
                     std::cout << "time " << tick << "ms: Process " << running_CPU_burst[0].pid
@@ -686,9 +832,9 @@ void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
                               << tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS << "ms " << queue_string(queue) << std::endl;
                 remaining_CS_t = tcs;
                 move_process(tick + running_CPU_burst[0].io_bursts[0] + HALF_TCS, running_CPU_burst, blocking_on_io);
+                srtData.IOB_total_burst += running_CPU_burst[0].io_bursts.front();
             }
         }
-
         if (!blocking_on_io.empty() && blocking_on_io[0].arrival_time <= tick) {
             remove_first_io_burst(blocking_on_io);
             working_pid = blocking_on_io[0].pid;
@@ -701,14 +847,14 @@ void run_SRT(std::vector<Process> &Processes, int tcs, float alpha) {
 
             remaining_CS_t = HALF_TCS;
         }
-
         tick++;
     }
 
-    std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SRT" << std::endl;
+    srtData.total_simulation_time = tick - 1 + HALF_TCS;
+    std::cout << "time " << tick - 1 + HALF_TCS << "ms: Simulator ended for SRT [Q empty]" << std::endl;
+
+    generate_algorithm_simout(srtData, outfile, "SRT");
 }
-
-
 
 int main(int argc, char** argv) {
     if (argc != 9) {
@@ -742,11 +888,11 @@ int main(int argc, char** argv) {
     std::cout << "<<< -- t_cs="<< tcs << "ms; alpha="<< std::fixed << std::setprecision(2) << alpha << "; t_slice=" << tslice <<"ms" << std::endl;
     run_FCFS(Processes, tcs, outFile);
     std:: cout << std::endl;
-    run_SJF(Processes, tcs, alpha);
+    run_SJF(Processes, tcs, alpha, outFile);
     std:: cout << std::endl;
-    run_SRT(Processes, tcs, alpha);
+    run_SRT(Processes, tcs, alpha, outFile);
     std::cout << std::endl;
-    run_RR(Processes, tcs, tslice);//segfaults
+    run_RR(Processes, tcs, tslice, outFile);//segfaults
 
     outFile.close();
 

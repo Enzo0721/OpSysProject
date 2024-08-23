@@ -1,9 +1,10 @@
 <<< PROJECT PART I
 <<< -- process set (n=3) with 1 CPU-bound process
 <<< -- seed=32; lambda=0.001000; bound=1024
-CPU-bound process A0: arrival time 319ms; 25 CPU bursts:
-I/O-bound process A1: arrival time 506ms; 5 CPU bursts:
-I/O-bound process A2: arrival time 821ms; 15 CPU bursts:
+CPU-bound process A0: arrival time 319ms; 25 CPU bursts
+I/O-bound process A1: arrival time 506ms; 5 CPU bursts
+I/O-bound process A2: arrival time 821ms; 15 CPU bursts
+
 <<< PROJECT PART II
 <<< -- t_cs=4ms; alpha=0.75; t_slice=256ms
 time 0ms: Simulator started for FCFS [Q empty]
@@ -87,7 +88,7 @@ time 9200ms: Process A1 (tau 227ms) completed I/O; added to ready queue [Q A1 A2
 time 12705ms: Process A1 terminated [Q empty]
 time 52148ms: Process A0 terminated [Q empty]
 time 66002ms: Process A2 terminated [Q empty]
-time 66004ms: Simulator ended for SJF
+time 66004ms: Simulator ended for SJF [Q empty]
 
 time 0ms: Simulator started for SRT [Q empty]
 time 319ms: Process A0 (tau 1000ms) arrived; added to ready queue [Q A0]
